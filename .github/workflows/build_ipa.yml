@@ -1,0 +1,42 @@
+name: Build NX Native Game Package
+on:
+  workflow_dispatch:
+    inputs:
+      game_url:
+        description: 'Direct Public Download Link to Game (.nsp/.xci)'
+        required: true
+      game_folder_name:
+        description: 'Name of the Game Folder (e.g., MarioWonder)'
+        required: true
+        default: 'TargetGame'
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup System Dependencies
+        run: |
+          xcodebuild -downloadComponent MetalToolchain
+          brew install xcodegen zstd glslang
+          brew install --cask dotnet-sdk
+          python3 -m pip install lz4 "capstone>=5,<6" fonttools nsz zbic "backports.zstd"
+
+      - name: Download Game Dump & Setup Keys
+        run: |
+          mkdir -p ~/Games/${{ github.event.inputs.game_folder_name }}
+          mkdir -p ~/keys
+          echo "${{ secrets.PROD_KEYS }}" > ~/keys/prod.keys
+          curl -L "${{ github.event.inputs.game_url }}" -o ~/Games/${{ github.event.inputs.game_folder_name }}/game_file.nsp
+
+      - name: Run Native Compilation Script
+        run: |
+          python3 scripts/build_ipa_from_nsp.py ~/Games/${{ github.event.inputs.game_folder_name }} -k ~/keys/prod.keys
+
+      - name: Upload Finished IPA Package
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ github.event.inputs.game_folder_name }}-NXNative-IPA
+          path: ./*.ipa
